@@ -15,6 +15,12 @@ import tqdm
 from lpips import LPIPS
 from radiance_fields.ngp import NGPDensityField, NGPRadianceField
 
+import os
+import sys
+base_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+if base_dir not in sys.path:
+    sys.path.append(base_dir)
+
 from examples.utils import (
     MIPNERF360_UNBOUNDED_SCENES,
     NERF_SYNTHETIC_SCENES,
@@ -59,10 +65,12 @@ device = "cuda:0"
 set_random_seed(42)
 
 if args.scene in MIPNERF360_UNBOUNDED_SCENES:
-    from datasets.nerf_360_v2 import SubjectLoader
+    # from datasets.nerf_360_v2 import SubjectLoader
+    from datasets.unbounded_custom import SubjectLoader
 
     # training parameters
-    max_steps = 20000
+    # max_steps = 20000
+    max_steps = 5000
     init_batch_size = 4096
     weight_decay = 0.0
     # scene parameters
@@ -260,6 +268,20 @@ for step in range(max_steps + 1):
         )
 
     if step > 0 and step % max_steps == 0:
+        # Save model to disk
+        model_save_path = "ngp_nerf_prop.pt"
+        torch.save(
+            {
+                "radiance_field_state_dict": radiance_field.state_dict(),
+                "prop_optimizer_state_dict": prop_optimizer.state_dict(),
+                "prop_scheduler_state_dict": prop_scheduler.state_dict(),
+                "estimator_state_dict": estimator.state_dict(),
+                "proposal_network_0_state_dict": proposal_networks[0].state_dict(),
+                "proposal_network_1_state_dict": proposal_networks[1].state_dict(),
+            },
+            model_save_path,
+        )
+
         # evaluation
         radiance_field.eval()
         for p in proposal_networks:
@@ -296,18 +318,18 @@ for step in range(max_steps + 1):
                 psnr = -10.0 * torch.log(mse) / np.log(10.0)
                 psnrs.append(psnr.item())
                 lpips.append(lpips_fn(rgb, pixels).item())
-                # if i == 0:
-                #     imageio.imwrite(
-                #         "rgb_test.png",
-                #         (rgb.cpu().numpy() * 255).astype(np.uint8),
-                #     )
-                #     imageio.imwrite(
-                #         "rgb_error.png",
-                #         (
-                #             (rgb - pixels).norm(dim=-1).cpu().numpy() * 255
-                #         ).astype(np.uint8),
-                #     )
-                #     break
+                if i == 0 or True:
+                    imageio.imwrite(
+                        f"novel_views_unbounded/rgb_test_{i}.png",
+                        (rgb.cpu().numpy() * 255).astype(np.uint8),
+                    )
+                    imageio.imwrite(
+                        f"novel_views_unbounded/rgb_error_{i}.png",
+                        (
+                            (rgb - pixels).norm(dim=-1).cpu().numpy() * 255
+                        ).astype(np.uint8),
+                    )
+                    # break
         psnr_avg = sum(psnrs) / len(psnrs)
         lpips_avg = sum(lpips) / len(lpips)
         print(f"evaluation: psnr_avg={psnr_avg}, lpips_avg={lpips_avg}")
