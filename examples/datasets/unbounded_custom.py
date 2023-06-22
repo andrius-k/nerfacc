@@ -23,16 +23,21 @@ from scene_manager import SceneManager
 
 
 def _load_camera_poses(root_fp: str, fp: str):
-    # blender2opencv = np.array([
-    #     [1, 0, 0, 0], 
-    #     [0, -1, 0, 0], 
-    #     [0, 0, -1, 0], 
-    #     [0, 0, 0, 1]]
-    # )
     poses_path = os.path.join(root_fp, fp)
     with open(poses_path) as f:
         poses = np.fromstring(f.read(), dtype=np.float32, sep=" ")
         poses = poses.reshape((-1, 4, 4))
+
+        # poses[:,0,3] -= 1000
+        # poses[:,1,3] += 155
+        # poses[:,2,3] += 350
+
+        # Normalize the scene to be between -1 and 1
+        scale = np.max(np.abs(poses[:,:2,3]))
+        poses[:,0,3] /= scale
+        poses[:,1,3] /= scale
+        poses[:,2,3] /= scale
+
         poses = torch.from_numpy(poses)
 
     return poses
@@ -53,7 +58,7 @@ def _load_dataset(root_fp: str, training: bool, factor: int = 1):
 
         # Make sure it fits in memory
         start = 0
-        end = 225
+        end = 450
         step = 1
         # Load the images
         for img_id in range(start, end, step):
@@ -232,19 +237,21 @@ class SubjectLoader(torch.utils.data.Dataset):
         )
         self.color_bkgd_aug = color_bkgd_aug
         self.batch_over_images = batch_over_images
-        # self.images, self.camtoworlds, self.K, split_indices = _load_colmap(
-        #     root_fp, subject_id, factor
+
+        # self.images, self.camtoworlds, self.K = _load_baseline_dataset(
+        #     root_fp, self.training, factor
         # )
-        self.images, self.camtoworlds, self.K = _load_baseline_dataset(
+
+        self.images, self.camtoworlds, self.K = _load_dataset(
             root_fp, self.training, factor
         )
 
         # normalize the scene
-        T, sscale = similarity_from_cameras(
-            self.camtoworlds, strict_scaling=False
-        )
-        self.camtoworlds = np.einsum("nij, ki -> nkj", self.camtoworlds, T)
-        self.camtoworlds[:, :3, 3] *= sscale
+        # T, sscale = similarity_from_cameras(
+        #     self.camtoworlds, strict_scaling=False
+        # )
+        # self.camtoworlds = np.einsum("nij, ki -> nkj", self.camtoworlds, T)
+        # self.camtoworlds[:, :3, 3] *= sscale
         # to tensor
         self.images = torch.from_numpy(self.images).to(torch.uint8).to(device)
         self.camtoworlds = (
