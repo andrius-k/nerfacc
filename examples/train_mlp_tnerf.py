@@ -12,9 +12,17 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import tqdm
-from datasets.dnerf_synthetic import SubjectLoader
+# from datasets.dnerf_synthetic import SubjectLoader
+# from datasets.dnerf_custom import CustomLoader
+from datasets.unbounded_custom import SubjectLoader
 from lpips import LPIPS
 from radiance_fields.mlp import TNeRFRadianceField
+
+import os
+import sys
+base_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+if base_dir not in sys.path:
+    sys.path.append(base_dir)
 
 from examples.utils import render_image_with_occgrid, set_random_seed
 from nerfacc.estimators.occ_grid import OccGridEstimator
@@ -62,17 +70,25 @@ args = parser.parse_args()
 
 # training parameters
 max_steps = 30000
+# max_steps = 240000
+# init_batch_size = 1024
 init_batch_size = 1024
 target_sample_batch_size = 1 << 16
 # scene parameters
 aabb = torch.tensor([-1.5, -1.5, -1.5, 1.5, 1.5, 1.5], device=device)
+# aabb = torch.tensor([-1.0, -1.0, -1.0, 1.0, 1.0, 1.0], device=device)
+# scene_center = torch.tensor([297.0, 160.0, 201.0])
+# aabb = torch.cat([scene_center - 400, scene_center + 400]).to(device)
 near_plane = 0.0
 far_plane = 1.0e10
+# far_plane = 1e3
 # model parameters
 grid_resolution = 128
+# grid_resolution = 2
 grid_nlvl = 1
 # render parameters
 render_step_size = 5e-3
+# render_step_size = 5e-1
 
 # setup the dataset
 train_dataset = SubjectLoader(
@@ -145,6 +161,7 @@ for step in range(max_steps + 1):
         render_step_size=render_step_size,
         render_bkgd=render_bkgd,
         alpha_thre=0.01 if step > 1000 else 0.00,
+        # alpha_thre=0.00,
         # t-nerf options
         timestamps=timestamps,
     )
@@ -212,17 +229,17 @@ for step in range(max_steps + 1):
                 psnr = -10.0 * torch.log(mse) / np.log(10.0)
                 psnrs.append(psnr.item())
                 lpips.append(lpips_fn(rgb, pixels).item())
-                # if i == 0:
-                #     imageio.imwrite(
-                #         "rgb_test.png",
-                #         (rgb.cpu().numpy() * 255).astype(np.uint8),
-                #     )
-                #     imageio.imwrite(
-                #         "rgb_error.png",
-                #         (
-                #             (rgb - pixels).norm(dim=-1).cpu().numpy() * 255
-                #         ).astype(np.uint8),
-                #     )
+                if i == 0 or True:
+                    imageio.imwrite(
+                        f"novel_views_dnerf_custom/rgb_test_{i}.png",
+                        (rgb.cpu().numpy() * 255).astype(np.uint8),
+                    )
+                    imageio.imwrite(
+                        f"novel_views_dnerf_custom/rgb_error{i}.png",
+                        (
+                            (rgb - pixels).norm(dim=-1).cpu().numpy() * 255
+                        ).astype(np.uint8),
+                    )
         psnr_avg = sum(psnrs) / len(psnrs)
         lpips_avg = sum(lpips) / len(lpips)
         print(f"evaluation: psnr_avg={psnr_avg}, lpips_avg={lpips_avg}")
