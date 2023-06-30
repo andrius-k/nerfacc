@@ -243,7 +243,27 @@ class VanillaNeRFRadianceField(nn.Module):
             condition = self.view_encoder(condition)
         rgb, sigma = self.mlp(x, condition=condition)
         return torch.sigmoid(rgb), F.relu(sigma)
+    
 
+class WarpMLP(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.posi_encoder = SinusoidalEncoder(3, 0, 4, True)
+        self.time_encoder = SinusoidalEncoder(1, 0, 4, True)
+        self.warp = MLP(
+            input_dim=self.posi_encoder.latent_dim
+            + self.time_encoder.latent_dim,
+            output_dim=3,
+            net_depth=4,
+            net_width=64,
+            skip_layer=2,
+            output_init=functools.partial(torch.nn.init.uniform_, b=1e-4),
+        )
+
+    def forward(self, x, t, condition=None):
+        return x + self.warp(
+            torch.cat([self.posi_encoder(x), self.time_encoder(t)], dim=-1)
+        )
 
 class TNeRFRadianceField(nn.Module):
     def __init__(self) -> None:

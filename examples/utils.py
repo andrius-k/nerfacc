@@ -170,6 +170,8 @@ def render_image_with_propnet(
     proposal_requires_grad: bool = False,
     # test options
     test_chunk_size: int = 8192,
+    # custom options
+    timestamps: Optional[torch.Tensor] = None,
 ):
     """Render the pixels of an image."""
     rays_shape = rays.origins.shape
@@ -186,6 +188,28 @@ def render_image_with_propnet(
         t_origins = chunk_rays.origins[..., None, :]
         t_dirs = chunk_rays.viewdirs[..., None, :]
         positions = t_origins + t_dirs * (t_starts + t_ends)[..., None] / 2.0
+
+        # t = (
+        #     timestamps[..., None, :]
+        #     if radiance_field.training
+        #     else timestamps.expand_as(positions[:, :1])
+        # )
+        # Copy time for each sample along the ray
+        # t = t.expand(-1, positions.shape[1], -1)
+
+        # positions = warp(positions, t)
+        
+        # np.set_printoptions(suppress = True)
+        # print(t_origins[0, 0, :])
+        # print(t_dirs[0, 0, :])
+        # print(positions[0, 0, :])
+        # print(t_origins.shape)
+        # print(t_dirs.shape)
+        # print(positions.shape)
+        # print("====")
+        # for i in range(positions.shape[1]):
+        #     print(positions[0,i,:])
+        # print("++++++")
         sigmas = proposal_network(positions)
         if opaque_bkgd:
             sigmas[..., -1, :] = torch.inf
