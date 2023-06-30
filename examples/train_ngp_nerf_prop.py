@@ -14,6 +14,7 @@ import torch.nn.functional as F
 import tqdm
 from lpips import LPIPS
 from radiance_fields.ngp import NGPDensityField, NGPRadianceField
+from radiance_fields.mlp import WarpMLP
 
 import os
 import sys
@@ -70,14 +71,17 @@ if args.scene in MIPNERF360_UNBOUNDED_SCENES:
 
     # training parameters
     # max_steps = 20000
-    max_steps = 5000
+    # max_steps = 5000
+    max_steps = 40000
+    # max_steps = 150000
     init_batch_size = 4096
     weight_decay = 0.0
     # scene parameters
     unbounded = True
     aabb = torch.tensor([-1.0, -1.0, -1.0, 1.0, 1.0, 1.0], device=device)
-    near_plane = 0.2  # TODO: Try 0.02
-    # near_plane = 0.02
+    # aabb = torch.tensor([-1.5, -1.5, -1.5, 1.5, 1.5, 1.5], device=device)
+    # near_plane = 0.2  # TODO: Try 0.02
+    near_plane = 0.2
     far_plane = 1e3
     # dataset parameters
     train_dataset_kwargs = {"color_bkgd_aug": "random", "factor": 4}
@@ -100,6 +104,7 @@ if args.scene in MIPNERF360_UNBOUNDED_SCENES:
     # render parameters
     num_samples = 48
     num_samples_per_prop = [256, 96]
+    # num_samples_per_prop = [96]
     sampling_type = "lindisp"
     opaque_bkgd = True
 
@@ -225,6 +230,7 @@ for step in range(max_steps + 1):
     render_bkgd = data["color_bkgd"]
     rays = data["rays"]
     pixels = data["pixels"]
+    timestamps = data["timestamps"]
 
     proposal_requires_grad = proposal_requires_grad_fn(step)
     # render
@@ -243,6 +249,8 @@ for step in range(max_steps + 1):
         render_bkgd=render_bkgd,
         # train options
         proposal_requires_grad=proposal_requires_grad,
+        # custom options
+        timestamps=timestamps,
     )
     estimator.update_every_n_steps(
         extras["trans"], proposal_requires_grad, loss_scaler=1024
@@ -270,18 +278,18 @@ for step in range(max_steps + 1):
 
     if step > 0 and step % max_steps == 0:
         # Save model to disk
-        model_save_path = "ngp_nerf_prop.pt"
-        torch.save(
-            {
-                "radiance_field_state_dict": radiance_field.state_dict(),
-                "prop_optimizer_state_dict": prop_optimizer.state_dict(),
-                "prop_scheduler_state_dict": prop_scheduler.state_dict(),
-                "estimator_state_dict": estimator.state_dict(),
-                "proposal_network_0_state_dict": proposal_networks[0].state_dict(),
-                "proposal_network_1_state_dict": proposal_networks[1].state_dict(),
-            },
-            model_save_path,
-        )
+        # model_save_path = "ngp_nerf_prop.pt"
+        # torch.save(
+        #     {
+        #         "radiance_field_state_dict": radiance_field.state_dict(),
+        #         "prop_optimizer_state_dict": prop_optimizer.state_dict(),
+        #         "prop_scheduler_state_dict": prop_scheduler.state_dict(),
+        #         "estimator_state_dict": estimator.state_dict(),
+        #         "proposal_network_0_state_dict": proposal_networks[0].state_dict(),
+        #         "proposal_network_1_state_dict": proposal_networks[1].state_dict(),
+        #     },
+        #     model_save_path,
+        # )
 
         # evaluation
         radiance_field.eval()
@@ -297,6 +305,7 @@ for step in range(max_steps + 1):
                 render_bkgd = data["color_bkgd"]
                 rays = data["rays"]
                 pixels = data["pixels"]
+                timestamps = data["timestamps"]
 
                 # rendering
                 rgb, acc, depth, _, = render_image_with_propnet(
@@ -314,6 +323,8 @@ for step in range(max_steps + 1):
                     render_bkgd=render_bkgd,
                     # test options
                     test_chunk_size=args.test_chunk_size,
+                    # custom options
+                    timestamps=timestamps,
                 )
                 mse = F.mse_loss(rgb, pixels)
                 psnr = -10.0 * torch.log(mse) / np.log(10.0)

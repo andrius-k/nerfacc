@@ -75,12 +75,12 @@ max_steps = 30000
 init_batch_size = 1024
 target_sample_batch_size = 1 << 16
 # scene parameters
-aabb = torch.tensor([-1.5, -1.5, -1.5, 1.5, 1.5, 1.5], device=device)
-# aabb = torch.tensor([-1.0, -1.0, -1.0, 1.0, 1.0, 1.0], device=device)
+# aabb = torch.tensor([-1.5, -1.5, -1.5, 1.5, 1.5, 1.5], device=device)
+aabb = torch.tensor([-1.0, -1.0, -1.0, 1.0, 1.0, 1.0], device=device)
 # scene_center = torch.tensor([297.0, 160.0, 201.0])
 # aabb = torch.cat([scene_center - 400, scene_center + 400]).to(device)
-near_plane = 0.0
-far_plane = 1.0e10
+near_plane = 0.2
+far_plane = 1.0e3
 # far_plane = 1e3
 # model parameters
 grid_resolution = 128

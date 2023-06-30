@@ -24,6 +24,13 @@ from scene_manager import SceneManager
 
 def _load_camera_poses(root_fp: str, fp: str):
     poses_path = os.path.join(root_fp, fp)
+
+    # Load actor poses path
+    actor_poses_path =  poses_path.replace("poses.txt", "actor.txt")
+    with open(actor_poses_path) as f:
+        actor_poses = np.fromstring(f.read(), dtype=np.float32, sep=" ")
+        actor_poses = actor_poses.reshape((-1, 4, 4))
+
     with open(poses_path) as f:
         poses = np.fromstring(f.read(), dtype=np.float32, sep=" ")
         poses = poses.reshape((-1, 4, 4))
@@ -32,8 +39,13 @@ def _load_camera_poses(root_fp: str, fp: str):
         # poses[:,1,3] += 155
         # poses[:,2,3] += 350
 
+        # Center the scene
+        poses[:,0,3] -= actor_poses[:,0,3]
+        poses[:,1,3] -= actor_poses[:,1,3]
+        poses[:,2,3] -= actor_poses[:,2,3]
+
         # Normalize the scene to be between -1 and 1
-        scale = np.max(np.abs(poses[:,:2,3]))
+        scale = np.max(np.abs(poses[:,:3,3]))
         poses[:,0,3] /= scale
         poses[:,1,3] /= scale
         poses[:,2,3] /= scale
@@ -50,25 +62,27 @@ def _load_dataset(root_fp: str, training: bool, factor: int = 1):
     K = []
 
     if training:
-        # Load camera matrix
-        camera_matrix_path = os.path.join(root_fp, "main/K.txt")
-        K = np.loadtxt(camera_matrix_path)
+        # for perspective in ["main"]:
+        for perspective in ["main", "perspective_1", "perspective_2"]:
+            # Load camera matrix
+            camera_matrix_path = os.path.join(root_fp, f"{perspective}/K.txt")
+            K = np.loadtxt(camera_matrix_path)
 
-        # Load camera poses
-        poses = _load_camera_poses(root_fp, "main/poses.txt")
+            # Load camera poses
+            poses = _load_camera_poses(root_fp, f"{perspective}/poses.txt")
 
-        # Make sure it fits in memory
-        start = 0
-        end = 450
-        step = 1
-        # Load the images
-        for img_id in range(start, end, step):
-            image_path = os.path.join(root_fp, f"main/camera_{str(img_id).zfill(4)}.jpeg")
-            rgb = imageio.imread(image_path)
-            images.append(rgb)
-            camtoworlds.append(poses[img_id])
-            # timestamps.append((1/30) * img_id)
-            timestamps.append(float(img_id) / (len(poses) - 1))
+            # Make sure it fits in memory
+            start = 0
+            end = 450
+            step = 1
+            # Load the images
+            for img_id in range(start, end, step):
+                image_path = os.path.join(root_fp, f"{perspective}/camera_{str(img_id).zfill(4)}.jpeg")
+                rgb = imageio.imread(image_path)
+                images.append(rgb)
+                camtoworlds.append(poses[img_id])
+                # timestamps.append((1/30) * img_id)
+                timestamps.append(float(img_id) / (len(poses) - 1))
     else:
         # Load camera matrix
         camera_matrix_path = os.path.join(root_fp, "perspective_1/K.txt")
@@ -84,7 +98,7 @@ def _load_dataset(root_fp: str, training: bool, factor: int = 1):
             # timestamps.append((1/30) * img_id)
             timestamps.append(float(img_id) / (len(poses) - 1))
         
-        for p in range(1, 5):
+        for p in range(2, 5):
             # Load camera poses
             poses = _load_camera_poses(root_fp, f"perspective_{p}/poses.txt")
 
