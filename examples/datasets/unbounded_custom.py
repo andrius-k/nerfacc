@@ -46,6 +46,7 @@ def _load_camera_poses(root_fp: str, fp: str):
 def _load_dataset(root_fp: str, training: bool, factor: int = 1):
     images = []
     camtoworlds = []
+    timestamps = []
     K = []
 
     if training:
@@ -66,6 +67,8 @@ def _load_dataset(root_fp: str, training: bool, factor: int = 1):
             rgb = imageio.imread(image_path)
             images.append(rgb)
             camtoworlds.append(poses[img_id])
+            # timestamps.append((1/30) * img_id)
+            timestamps.append(float(img_id) / (len(poses) - 1))
     else:
         # Load camera matrix
         camera_matrix_path = os.path.join(root_fp, "perspective_1/K.txt")
@@ -78,6 +81,8 @@ def _load_dataset(root_fp: str, training: bool, factor: int = 1):
             rgb = imageio.imread(image_path)
             images.append(rgb)
             camtoworlds.append(poses[img_id])
+            # timestamps.append((1/30) * img_id)
+            timestamps.append(float(img_id) / (len(poses) - 1))
         
         for p in range(1, 5):
             # Load camera poses
@@ -88,19 +93,22 @@ def _load_dataset(root_fp: str, training: bool, factor: int = 1):
             rgb = imageio.imread(image_path)
             images.append(rgb)
             camtoworlds.append(poses[0])
+            timestamps.append(0)
 
     images = np.stack(images, axis=0)
     camtoworlds = np.stack(camtoworlds, axis=0)
+    timestamps = np.stack(timestamps, axis=0)
 
     # Convert extrinsics to camera-to-world
     # camtoworlds = np.linalg.inv(camtoworlds)
 
-    return images, camtoworlds, K
+    return images, camtoworlds, timestamps, K
 
 
 def _load_baseline_dataset(root_fp: str, training: bool, factor: int = 1):
     images = []
     camtoworlds = []
+    timestamps = []
     K = []
 
     # Load camera matrix
@@ -126,14 +134,16 @@ def _load_baseline_dataset(root_fp: str, training: bool, factor: int = 1):
         rgb = imageio.imread(image_path)
         images.append(rgb)
         camtoworlds.append(poses[img_id])
+        timestamps.append(0)
 
     images = np.stack(images, axis=0)
     camtoworlds = np.stack(camtoworlds, axis=0)
+    timestamps = np.stack(timestamps, axis=0)
 
     # Convert extrinsics to camera-to-world
     # camtoworlds = np.linalg.inv(camtoworlds)
 
-    return images, camtoworlds, K
+    return images, camtoworlds, timestamps, K
 
 
 def similarity_from_cameras(c2w, strict_scaling):
@@ -207,6 +217,7 @@ class SubjectLoader(torch.utils.data.Dataset):
         "kitchen",
         "room",
         "stump",
+        "lego",
     ]
 
     OPENGL_CAMERA = False
@@ -238,11 +249,11 @@ class SubjectLoader(torch.utils.data.Dataset):
         self.color_bkgd_aug = color_bkgd_aug
         self.batch_over_images = batch_over_images
 
-        # self.images, self.camtoworlds, self.K = _load_baseline_dataset(
+        # self.images, self.camtoworlds, self.timestamps, self.K = _load_baseline_dataset(
         #     root_fp, self.training, factor
         # )
 
-        self.images, self.camtoworlds, self.K = _load_dataset(
+        self.images, self.camtoworlds, self.timestamps, self.K = _load_dataset(
             root_fp, self.training, factor
         )
 
@@ -257,6 +268,12 @@ class SubjectLoader(torch.utils.data.Dataset):
         self.camtoworlds = (
             torch.from_numpy(self.camtoworlds).to(torch.float32).to(device)
         )
+        self.timestamps = (
+            torch.from_numpy(self.timestamps)
+            .to(device)
+            .to(torch.float32)[:, None]
+        )
+
         self.K = torch.tensor(self.K).to(torch.float32).to(device)
         self.height, self.width = self.images.shape[1:3]
 
@@ -328,6 +345,8 @@ class SubjectLoader(torch.utils.data.Dataset):
         # generate rays
         rgb = self.images[image_id, y, x] / 255.0  # (num_rays, 3)
         c2w = self.camtoworlds[image_id]  # (num_rays, 3, 4)
+        timestamps = self.timestamps[image_id]
+
         camera_dirs = F.pad(
             torch.stack(
                 [
@@ -363,4 +382,5 @@ class SubjectLoader(torch.utils.data.Dataset):
         return {
             "rgb": rgb,  # [h, w, 3] or [num_rays, 3]
             "rays": rays,  # [h, w, 3] or [num_rays, 3]
+            "timestamps": timestamps,  # [num_rays, 1]
         }
